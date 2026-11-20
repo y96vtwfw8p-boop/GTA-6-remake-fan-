@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>GTA 6 remake</title>
+  <!-- Fonts: Anton for Marvel-style GAMEMAKE logo, Inter for crisp GTA HUD -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet" />
+  <!-- Three.js r128 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    :root {
+      --glass-bg: rgba(12, 8, 22, 0.72);
+      --glass-border: rgba(255, 255, 255, 0.16);
+      --neon-purple: #d946ef;
+      --neon-pink: #f43f5e;
+      --gta-green: #4ade80;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0b0418;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      color: #ffffff;
+      touch-action: none;
+    }
+
+    #game-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* ================= SPEED LINES VIGNETTE (400 KM/H HYPERBIKE) ================= */
+    #speed-vignette {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+      opacity: 0;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0) 52%, rgba(217, 70, 239, 0.22) 82%, rgba(244, 63, 94, 0.42) 100%);
+      transition: opacity 0.12s linear;
+    }
+
+    /* ================= CINEMATIC INTRO LETTERBOX ================= */
+    .letterbox-bar {
+      position: fixed;
+      left: 0;
+      right: 0;
+      height: 10vh;
+      max-height: 82px;
+      background: #000000;
+      z-index: 35;
+      transition: transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+      pointer-events: none;
+    }
+
+    #letterbox-top {
+      top: 0;
+      transform: translateY(-100%);
+    }
+
+    #letterbox-bottom {
+      bottom: 0;
+      transform: translateY(100%);
+    }
+
+    .letterbox-active #letterbox-top,
+    .letterbox-active #letterbox-bottom {
+      transform: translateY(0);
+    }
+
+    #skip-intro-btn {
+      position: fixed;
+      bottom: calc(18px + var(--safe-bottom));
+      right: calc(20px + var(--safe-right));
+      z-index: 36;
+      padding: 8px 16px;
+      border-radius: 999px;
+      background: rgba(15, 10, 26, 0.7);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      color: rgba(255, 255, 255, 0.85);
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      cursor: pointer;
+      display: none;
+    }
+
+    #skip-intro-btn:hover {
+      background: rgba(217, 70, 239, 0.5);
+      color: #ffffff;
+    }
+
+    /* ================= MAIN MENU ================= */
+    .overlay-screen {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(
+        180deg,
+        rgba(14, 5, 32, 0.25) 0%,
+        rgba(34, 8, 56, 0.48) 55%,
+        rgba(10, 3, 22, 0.86) 100%
+      );
+      backdrop-filter: blur(3px);
+      -webkit-backdrop-filter: blur(3px);
+      z-index: 40;
+      transition: opacity 0.6s ease, visibility 0.6s ease;
+      padding: 24px;
+      text-align: center;
+    }
+
+    .overlay-screen.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    #main-menu {
+      justify-content: space-between;
+      gap: clamp(10px, 2.2vh, 22px);
+      padding: calc(16px + var(--safe-top)) 20px calc(18px + var(--safe-bottom)) 20px;
+    }
+
+    .menu-center-group {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(12px, 2.4vh, 24px);
+      width: 100%;
+      min-height: 0;
+    }
+
+    .menu-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: clamp(20px, 4.2vh, 46px) clamp(26px, 6vw, 72px);
+      border-radius: 28px;
+      background: rgba(16, 7, 32, 0.48);
+      border: 1px solid rgba(232, 121, 249, 0.32);
+      box-shadow:
+        0 28px 80px rgba(0, 0, 0, 0.72),
+        0 0 44px rgba(192, 38, 211, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.16);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      margin-bottom: 0;
+      max-width: 92vw;
+    }
+
+    .orientation-hint {
+      max-width: min(92vw, 560px);
+      padding: clamp(10px, 1.8vh, 14px) clamp(16px, 3.5vw, 28px);
+      border-radius: 16px;
+      background: rgba(16, 7, 32, 0.74);
+      border: 1.5px solid rgba(250, 204, 21, 0.58);
+      box-shadow:
+        0 10px 28px rgba(0, 0, 0, 0.58),
+        0 0 22px rgba(217, 70, 239, 0.24);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      color: #fef08a;
+      font-size: clamp(0.95rem, 2.8vw, 1.32rem);
+      font-weight: 800;
+      line-height: 1.3;
+      letter-spacing: 0.3px;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.78);
+    }
+
+    .game-title {
+      font-size: clamp(2.1rem, 7.2vw, 5.0rem);
+      font-weight: 900;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      background: linear-gradient(180deg, #ffffff 0%, #f5d0fe 42%, #f472b6 74%, #fb923c 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 6px 24px rgba(192, 38, 211, 0.72));
+      margin-bottom: clamp(16px, 3vh, 30px);
+      line-height: 1.05;
+    }
+
+    .play-btn {
+      padding: clamp(12px, 2.2vh, 16px) clamp(44px, 8vw, 64px);
+      font-size: clamp(1.05rem, 2.8vw, 1.42rem);
+      font-weight: 900;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #ffffff;
+      background: linear-gradient(135deg, #d946ef 0%, #9333ea 52%, #ec4899 100%);
+      border: 1.5px solid rgba(250, 232, 255, 0.78);
+      border-radius: 999px;
+      cursor: pointer;
+      box-shadow: 0 12px 34px rgba(217, 70, 239, 0.55), 0 0 28px rgba(236, 72, 153, 0.42);
+      transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+    }
+
+    .play-btn:hover {
+      transform: translateY(-2px) scale(1.04);
+      filter: brightness(1.1);
+      box-shadow: 0 16px 42px rgba(217, 70, 239, 0.75);
+    }
+
+    .play-btn:active {
+      transform: translateY(1px) scale(0.97);
+    }
+
+    /* Marvel-style GAMEMAKE Studio Logo */
+    .gamemake-brand {
+      position: relative;
+      flex-shrink: 0;
+      pointer-events: none;
+    }
+
+    @media (max-height: 460px) {
+      .menu-card {
+        padding: 14px 32px;
+      }
+      .game-title {
+        font-size: clamp(1.8rem, 6vw, 2.8rem);
+        margin-bottom: 12px;
+      }
+      .orientation-hint {
+        padding: 7px 16px;
+        font-size: clamp(0.84rem, 2.2vw, 1.02rem);
+      }
+      .gamemake-logo-text {
+        font-size: 1.55rem;
+      }
+    }
+
+    /* CENTER TOASTS (Dialogue / Cash / Status) */
+    #feedback-container {
+      position: absolute;
+      top: 22%;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      pointer-events: none;
+      max-width: 86vw;
+    }
+
+    .floating-toast {
+      font-size: clamp(0.84rem, 2.3vw, 1.02rem);
+      font-weight: 800;
+      padding: 7px 16px;
+      border-radius: 999px;
+      background: rgba(12, 7, 24, 0.86);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      animation: toastFloat 1.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      text-align: center;
+    }
+
+    .toast-money { color: #4ade80; border-color: rgba(74, 222, 128, 0.65); }
+    .toast-hit   { color: #fda4af; border-color: rgba(244, 63, 94, 0.65); }
+    .toast-talk  { color: #fde047; border-color: rgba(250, 204, 21, 0.6); }
+    .toast-info  { color: #f0abfc; border-color: rgba(217, 70, 239, 0.55); }
+
+    @keyframes toastFloat {
+      0% { opacity: 0; transform: translateY(10px) scale(0.92); }
+      14% { opacity: 1; transform: translateY(0) scale(1); }
+      84% { opacity: 1; transform: translateY(-16px); }
+      100% { opacity: 0; transform: translateY(-34px) scale(0.96); }
+    }
+
+    /* BOTTOM-LEFT: Compact Virtual Joystick */
+    #joystick-zone {
+      position: absolute;
+      bottom: calc(16px + var(--safe-bottom));
+      left: calc(16px + var(--safe-left));
+      width: clamp(98px, 22vw, 118px);
+      height: clamp(98px, 22vw, 118px);
+      border-radius: 50%;
+      background: rgba(14, 8, 28, 0.42);
+      backdrop-filter: blur(6px);
+      border: 1.5px solid rgba(255, 255, 255, 0.22);
+      box-shadow: inset 0 0 18px rgba(217, 70, 239, 0.18);
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: none;
+    }
+
+    #joystick-knob {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 32% 32%, #f472b6, #7e22ce);
+      border: 2px solid rgba(255, 255, 255, 0.85);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+      transform: translate(0px, 0px);
+      pointer-events: none;
+    }
+
+    /* BOTTOM-CENTER: Sleek GTA Digital Speedometer + Mobile Drive Pedals (Visible ONLY in Vehicle) */
+    #vehicle-hud {
+      position: absolute;
+      bottom: calc(16px + var(--safe-bottom));
+      left: 50%;
+      transform: translateX(-50%);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      pointer-events: none;
+    }
+
+    #vehicle-hud.visible {
+      display: flex;
+    }
+
+    .speedo-card {
+      padding: 6px 14px;
+      border-radius: 12px;
+      background: var(--glass-bg);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(232, 121, 249, 0.4);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 112px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+    }
+
+    .speedo-val {
+      font-size: clamp(1.15rem, 3.2vw, 1.55rem);
+      font-weight: 900;
+      line-height: 1.05;
+      color: #ffffff;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .speedo-unit {
+      font-size: 0.62rem;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      color: #f0abfc;
+      text-transform: uppercase;
+    }
+
+    .speedo-bar-track {
+      width: 100%;
+      height: 4px;
+      margin-top: 4px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.16);
+      overflow: hidden;
+    }
+
+    #speedo-bar-fill {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #38bdf8, #d946ef, #f43f5e);
+      transition: width 0.06s linear;
+    }
+
+    .drive-pedals {
+      display: flex;
+      gap: 8px;
+      pointer-events: auto;
+    }
+
+    .pedal-btn {
+      padding: 8px 14px;
+      border-radius: 10px;
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      color: #ffffff;
+      font-size: 0.76rem;
+      font-weight: 800;
+      cursor: pointer;
+      touch-action: none;
+    }
+
+    .pedal-btn.gas {
+      border-color: rgba(74, 222, 128, 0.6);
+      color: #86efac;
+    }
+
+    .pedal-btn.brake {
+      border-color: rgba(244, 63, 94, 0.6);
+      color: #fda4af;
+    }
+
+    /* BOTTOM-RIGHT: Clean 2-Column Non-Overlapping Action Grid */
+    .action-grid {
+      position: absolute;
+      bottom: calc(16px + var(--safe-bottom));
+      right: calc(14px + var(--safe-right));
+      display: grid;
+      grid-template-columns: repeat(2, auto);
+      gap: 8px;
+      pointer-events: auto;
+      justify-items: end;
+      align-items: end;
+    }
+
+    .gta-action-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-width: clamp(84px, 20vw, 118px);
+      padding: clamp(9px, 2vw, 11px) clamp(10px, 2.2vw, 14px);
+      border-radius: 12px;
+      background: var(--glass-bg);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--glass-border);
+      color: #ffffff;
+      font-size: clamp(0.76rem, 2vw, 0.86rem);
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.52);
+      transition: transform 0.1s ease, background 0.15s ease, border-color 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .gta-action-btn:active {
+      transform: scale(0.93);
+    }
+
+    .gta-action-btn.attack {
+      border-bottom: 2.5px solid #f43f5e;
+      background: rgba(68, 12, 28, 0.78);
+    }
+
+    .gta-action-btn.vehicle {
+      border-bottom: 2.5px solid #c084fc;
+      background: rgba(44, 14, 68, 0.78);
+    }
+
+    .gta-action-btn.talk {
+      border-bottom: 2.5px solid #38bdf8;
+      background: rgba(12, 34, 58, 0.78);
+    }
+
+    .gta-action-btn.door {
+      border-bottom: 2.5px solid #facc15;
+      background: rgba(54, 40, 10, 0.82);
+      display: none;
+    }
+
+    .gta-action-btn.door.near {
+      display: inline-flex;
+    }
+
+    .key-tag {
+      font-size: 0.64rem;
+      padding: 1px 5px;
+      border-radius: 5px;
+      background: rgba(255, 255, 255, 0.12);
+      color: rgba(255, 255, 255, 0.82);
+      font-weight: 700;
+    }
+
+    @media (max-width: 640px) {
+      .key-tag {
+        display: none;
+      }
+      .action-grid {
+        gap: 6px;
+      }
+      .hud-top-left {
+        gap: 7px;
+      }
+    }
+
+    /* ================= SHOP & RESET MODALS ================= */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(6, 3, 14, 0.76);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      z-index: 50;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .modal-backdrop.open {
+      display: flex;
+    }
+
+    .shop-modal {
+      width: 100%;
+      max-width: 540px;
+      max-height: 84vh;
+      display: flex;
+      flex-direction: column;
+      background: linear-gradient(160deg, rgba(24, 10, 48, 0.97), rgba(12, 5, 26, 0.98));
+      border: 1px solid rgba(232, 121, 249, 0.45);
+      border-radius: 22px;
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.85);
+      overflow: hidden;
+    }
+
+    .shop-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(42, 14, 78, 0.45);
+    }
+
+    .shop-title {
+      font-size: 1.18rem;
+      font-weight: 900;
+      color: #f5d0fe;
+    }
+
+    .shop-balance {
+      font-size: 1.05rem;
+      font-weight: 900;
+      color: var(--gta-green);
+    }
+
+    .shop-close-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 9px;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      font-size: 1.05rem;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .shop-tabs {
+      display: flex;
+      gap: 8px;
+      padding: 12px 18px 0 18px;
+    }
+
+    .shop-tab {
+      flex: 1;
+      padding: 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(255, 255, 255, 0.05);
+      color: #d8b4fe;
+      font-size: 0.9rem;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .shop-tab.active {
+      background: linear-gradient(135deg, #c026d3, #7e22ce);
+      color: #ffffff;
+      border-color: #f5d0fe;
+    }
+
+    .shop-items {
+      padding: 14px 18px 18px 18px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+
+    .shop-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .shop-item-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      text-align: left;
+    }
+
+    .shop-item-name {
+      font-size: 0.94rem;
+      font-weight: 800;
+      color: #ffffff;
+    }
+
+    .shop-item-desc {
+      font-size: 0.76rem;
+      color: #d8b4fe;
+    }
+
+    .shop-item-btn {
+      padding: 9px 14px;
+      border-radius: 10px;
+      border: none;
+      font-size: 0.84rem;
+      font-weight: 800;
+      cursor: pointer;
+      min-width: 104px;
+      flex-shrink: 0;
+    }
+
+    .shop-item-btn.buy { background: linear-gradient(135deg, #22c55e, #15803d); color: #fff; }
+    .shop-item-btn.equip { background: linear-gradient(135deg, #a855f7, #7e22ce); color: #fff; }
+    .shop-item-btn.equipped {
+      background: rgba(255, 255, 255, 0.12);
+      color: #fde047;
+      border: 1px solid rgba(253, 224, 71, 0.5);
+      cursor: default;
+    }
+
+    .reset-modal {
+      width: 100%;
+      max-width: 370px;
+      padding: 24px 22px;
+      border-radius: 22px;
+      background: linear-gradient(160deg, rgba(30, 12, 54, 0.98), rgba(14, 6, 28, 0.98));
+      border: 1px solid rgba(244, 63, 94, 0.55);
+      text-align: center;
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.88);
+    }
+
+    .reset-modal h3 { font-size: 1.22rem; font-weight: 900; margin-bottom: 8px; color: #fda4af; }
+    .reset-modal p { font-size: 0.88rem; color: #e9d5ff; line-height: 1.5; margin-bottom: 20px; }
+    .reset-modal-actions { display: flex; gap: 10px; justify-content: center; }
+
+    #error-box {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: #0b0418;
+      color: #fda4af;
+      z-index: 99;
+      padding: 24px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <!-- 3D Canvas -->
+  <canvas id="game-canvas"></canvas>
+
+  <!-- High-Speed Vignette Overlay -->
+  <div id="speed-vignette"></div>
+
+  <!-- Cinematic Intro Letterbox Bars -->
+  <div id="letterbox-top" class="letterbox-bar"></div>
+  <div id="letterbox-bottom" class="letterbox-bar"></div>
+  <button id="skip-intro-btn">Пропустить ⏭</button>
+
+  <!-- Main Menu -->
+  <div id="main-menu" class="overlay-screen">
+    <div class="menu-center-group">
+      <div class="menu-card">
+        <h1 class="game-title">GTA 6 remake</h1>
+        <button id="play-btn" class="play-btn">Играть</button>
+      </div>
+      <div class="orientation-hint">📱 Играть лучше в горизонтальном положении устройства</div>
+    </div>
+
+    <!-- Marvel-Style GAMEMAKE Logo -->
+    <div class="gamemake-brand">
+      <div class="gamemake-logo">
+        <span class="gamemake-logo-text">GAMEMAKE</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Clean Non-Overlapping GTA HUD -->
+  <div id="hud">
+    <!-- TOP-LEFT: Compact Radar + Shop & Reset -->
+    <div class="hud-top-left">
+      <div class="radar-wrap">
+        <canvas id="radar-canvas" width="150" height="150"></canvas>
+        <div id="radar-zone" class="radar-zone-tag">Квартира</div>
+      </div>
+      <div class="top-left-actions">
+        <button id="btn-shop" class="gta-mini-btn shop-accent">🛍️ Магазин</button>
+        <button id="btn-reset" class="gta-mini-btn reset-accent">🔄 Сбросить игру</button>
+      </div>
+    </div>
+
+    <!-- TOP-RIGHT: Classic GTA Money + Weapon + Health + Sound -->
+    <div class="hud-top-right">
+      <div class="gta-stat-card">
+        <div class="gta-money-row">
+          <span id="hud-money">$0</span>
+          <button id="btn-sound" class="sound-icon-btn" title="Звук">🔊</button>
+        </div>
+        <div id="hud-weapon" class="gta-weapon-row">👊 Кулаки</div>
+        <div class="health-bar-track">
+          <div class="health-bar-fill"></div>
+        </div>
+      </div>
+      <div class="pc-hints">
+        <b>WASD</b> ход/езда • <b>Shift</b> бег • <b>Мышь</b> камера<br />
+        <b>F</b> удар/выстрел • <b>E</b> авто/байк • <b>T</b> говорить • <b>G</b> дверь
+      </div>
+    </div>
+
+    <!-- CENTER FLOATING FEEDBACK -->
+    <div id="feedback-container"></div>
+
+    <!-- BOTTOM-LEFT: Virtual Joystick -->
+    <div id="joystick-zone" aria-label="Джойстик">
+      <div id="joystick-knob"></div>
+    </div>
+
+    <!-- BOTTOM-CENTER: Digital GTA Speedometer + Pedals (Only in Vehicle) -->
+    <div id="vehicle-hud">
+      <div class="speedo-card">
+        <span id="speedo-val" class="speedo-val">0</span>
+        <span class="speedo-unit">КМ/Ч</span>
+        <div class="speedo-bar-track">
+          <div id="speedo-bar-fill"></div>
+        </div>
+      </div>
+      <div class="drive-pedals">
+        <button id="btn-brake" class="pedal-btn brake">Тормоз</button>
+        <button id="btn-gas" class="pedal-btn gas">Газ</button>
+      </div>
+    </div>
+
+    <!-- BOTTOM-RIGHT: Clean 2-Column Action Grid (Zero Overlap) -->
+    <div class="action-grid">
+      <button id="btn-door" class="gta-action-btn door">
+        <span>🚪 Дверь</span>
+        <span class="key-tag">G</span>
+      </button>
+      <button id="btn-talk" class="gta-action-btn talk">
+        <span>💬 Говорить</span>
+        <span class="key-tag">T</span>
+      </button>
+      <button id="btn-hijack" class="gta-action-btn vehicle">
+        <span id="btn-hijack-label">🚗 Угнать</span>
+        <span class="key-tag">E</span>
+      </button>
+      <button id="btn-attack" class="gta-action-btn attack">
+        <span id="btn-attack-label">👊 Ударить</span>
+        <span class="key-tag">F</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Shop & Wardrobe Modal -->
+  <div id="shop-modal-backdrop" class="modal-backdrop">
+    <div class="shop-modal">
+      <div class="shop-header">
+        <span class="shop-title">🛍️ Магазин Vice City</span>
+        <span id="shop-balance" class="shop-balance">$0</span>
+        <button id="shop-close-btn" class="shop-close-btn">✕</button>
+      </div>
+      <div class="shop-tabs">
+        <button id="tab-weapons" class="shop-tab active">🔫 Оружие</button>
+        <button id="tab-outfits" class="shop-tab">👕 Одежда</button>
+      </div>
+      <div id="shop-items" class="shop-items"></div>
+    </div>
+  </div>
+
+  <!-- Reset Confirmation Modal -->
+  <div id="reset-modal-backdrop" class="modal-backdrop">
+    <div class="reset-modal">
+      <h3>Сбросить игру?</h3>
+      <p>Все сохранения (деньги, оружие, одежда и позиция) будут удалены, а герой и мотоцикл вернутся к квартире у пляжа.</p>
+      <div class="reset-modal-actions">
+        <button id="reset-cancel-btn" class="gta-mini-btn">Отмена</button>
+        <button id="reset-confirm-btn" class="gta-mini-btn reset-accent">Да, сбросить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- WebGL Error Fallback -->
+  <div id="error-box"></div>
+
+  <script>
+    /**
+     * GTA 6 remake — Realistic 5km × 5km Vice City Open World
+     * Single-file Three.js r128 + Procedural Web Audio API Music & SFX
+     *
+     * Architecture:
+     * 1. Strict mathematical road grid (80m spacing, 18m road width, 5m sidewalks, 52m building lots)
+     *    -> Traffic cars drive ONLY on right-hand lanes, turn smoothly 90° at intersections, NEVER clip buildings.
+     * 2. Zero Z-fighting: every surface (ocean, asphalt, sand, lane stripes, sidewalks, apartment floor, rug,
+     *    doors, face features, hair) has clean vertical/normal separation.
+     * 3. Realistic characters (Hero + NPCs + Drivers) with sculpted 3D eyes (sclera, iris, pupil), eyebrows,
+     *    nose, lips, ears, and varied 3D hairstyles.
+     * 4. Hero's apartment with real hinged opening/closing doors (East street entrance + West beach terrace).
+     * 5. 400 km/h Hyperbike (111.11 m/s peak) parked outside the apartment with banking tilt, FOV boost, and revving audio.
+     * 6. Cinematic GTA intro flyover from bird's-eye height descending into the apartment with multi-track synthwave music.
+     */
+
+    (function () {
+      'use strict';
+
+      // ===================== THREE.JS r128 COMPATIBILITY POLYFILL =====================
+      // Polyfill THREE.CapsuleGeometry via THREE.LatheGeometry for Three.js r128 (iOS Safari / Yandex / Telegram)
+      if (typeof THREE !== 'undefined' && !THREE.CapsuleGeometry) {
+        THREE.CapsuleGeometry = function (radius = 1, length = 1, capSegments = 4, radialSegments = 8) {
+          const r = Math.max(0.0001, radius);
+          const halfLen = Math.max(0, length) * 0.5;
+          const capSegs = Math.max(2, Math.floor(capSegments));
+          const radSegs = Math.max(3, Math.floor(radialSegments));
+          const points = [];
+
+          // Bottom hemisphere cap
+          for (let i = 0; i <= capSegs; i++) {
+            const theta = (i / capSegs) * (Math.PI * 0.5);
+            const x = Math.max(0.0001, Math.sin(theta) * r);
+            const y = -halfLen - Math.cos(theta) * r;
+            points.push(new THREE.Vector2(x, y));
+          }
+          // Top hemisphere cap
+          for (let i = 0; i <= capSegs; i++) {
+            const theta = (i / capSegs) * (Math.PI * 0.5);
+            const x = Math.max(0.0001, Math.cos(theta) * r);
+            const y = halfLen + Math.sin(theta) * r;
+            points.push(new THREE.Vector2(x, y));
+          }
+
+          const geo = new THREE.LatheGeometry(points, radSegs);
+          geo.type = 'CapsuleGeometry';
+          geo.computeVertexNormals();
+          return geo;
+        };
+      }
+
+      // ===================== TELEGRAM MINI APP INTEGRATION =====================
+// ... existing code ... -->
+        SHARED_CHAR.nose = new THREE.ConeGeometry(0.028, 0.085, 6);
+        SHARED_CHAR.nose.rotateX(Math.PI * 0.42);
+        SHARED_CHAR.lip = new THREE.BoxGeometry(0.072, 0.018, 0.02);
+        SHARED_CHAR.ear = new THREE.SphereGeometry(0.036, 8, 8);
+// ... existing code ... -->
